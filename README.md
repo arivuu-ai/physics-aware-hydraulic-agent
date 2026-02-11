@@ -19,23 +19,23 @@ Predict a *Water Supply Risk Score* — the probability that water delivery will
 │                                                                         │
 │  data_raw/                Component A              data_curated/        │
 │  ├── pump_telemetry.csv   ─────────────────────►   ├── pump/data.parquet│
-│  ├── nozzle_telemetry.csv  waterops/ingest.py      ├── nozzle/          │
+│  ├── nozzle_telemetry.csv  src/ingest.py      ├── nozzle/          │
 │  ├── supply_telemetry.csv                          ├── supply/          │
 │  └── labels.csv                                    └── ingest_manifest  │
 │                                                         │               │
 │                           Component B                   │               │
 │                           ─────────────────────►  data_training/        │
-│                            waterops/features.py   ├── training_table    │
+│                            src/features.py   ├── training_table    │
 │                                                   └── feature_manifest  │
 │                                                         │               │
 │                           Component C                   │               │
 │                           ─────────────────────►  artifacts/            │
-│                            waterops/train.py      ├── model_latest.pkl  │
+│                            src/train.py      ├── model_latest.pkl  │
 │                                                   └── metadata_latest   │
 │                                                         │               │
 │                           Component D                   │               │
 │                           ─────────────────────►  :8000                 │
-│                            waterops/serve.py      ├── POST /predict     │
+│                            src/serve.py      ├── POST /predict     │
 │                                                   ├── GET  /livez       │
 │                                                   └── GET  /readyz      │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -51,16 +51,16 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # 2. Ingest raw telemetry → curated Parquet
-python -m waterops.ingest --input ./data_raw --output ./data_curated
+python src/ingest.py --input ./data_raw --output ./data_curated
 
 # 3. Build training features
-python -m waterops.features --curated ./data_curated --labels ./data_raw/labels.csv --output ./data_training
+python src/features.py --curated ./data_curated --labels ./data_raw/labels.csv --output ./data_training
 
 # 4. Train & evaluate models
-python -m waterops.train --data ./data_training --model-out ./artifacts
+python src/train.py --data ./data_training --model-out ./artifacts
 
 # 5. Serve predictions
-python -m waterops.serve --model-dir ./artifacts --port 8000
+python src/serve.py --model-dir ./artifacts --port 8000
 
 # 6. Test a prediction
 curl -X POST http://localhost:8000/predict \
@@ -179,7 +179,7 @@ The system outputs a decision block ready for the control loop:
 # 6. Project Structure
 
 ```
-waterops/
+src/
 ├── __init__.py
 ├── ingest.py          # Component A — Ingest & canonicalize telemetry
 ├── features.py        # Component B — Windowing, joins, feature engineering
