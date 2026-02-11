@@ -246,4 +246,3 @@ python -m pytest tests/ --cov=waterops --cov-report=term-missing
 
 - Python 3.10+
 - All dependencies pinned in `requirements.txt`
-- No proprietary datasets included — use only the provided data
