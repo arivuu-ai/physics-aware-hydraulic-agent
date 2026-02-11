@@ -214,10 +214,8 @@ README.md
 
 | Model | PR-AUC | ROC-AUC | F1 | MCC | Threshold |
 |---|---|---|---|---|---|
-| Logistic Regression (baseline) | — | — | — | — | — |
-| XGBoost (improved) | — | — | — | — | — |
-
-*Fill in after running `python -m waterops.train`.*
+| Logistic Regression (baseline) | 0.6010 | 0.8265 | 0.7080 | 0.6182 | 0.9661 |
+| XGBoost (improved) | 0.9253 | 0.9521 | 0.9157 | 0.8954 | 0.9844 |
 
 # Error Analysis
 
