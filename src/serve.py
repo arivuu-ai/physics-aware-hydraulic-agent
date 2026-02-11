@@ -1,10 +1,11 @@
 """
-waterops/serve.py — Component D: Inference Interface (JSONL-aligned version)
+serve.py — Component D: Inference Interface (JSONL-aligned version)
 """
 
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
+
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     model_dir: str = os.getenv("WATEROPS_MODEL_DIR", "./artifacts")
@@ -37,7 +39,9 @@ def _setup_logger(name: str, level: str = "INFO") -> logging.Logger:
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(
-            logging.Formatter("%(asctime)s | %(name)s | %(levelname)s | %(message)s")
+            logging.Formatter(
+                "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+            )
         )
         logger.addHandler(handler)
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
@@ -60,19 +64,26 @@ class ModelState:
         model_path = Path(model_dir)
         model_file = model_path / "model_latest.pkl"
         meta_file = model_path / "metadata_latest.json"
+
         if not model_file.exists():
             raise FileNotFoundError(f"Model file not found: {model_file}")
         if not meta_file.exists():
             raise FileNotFoundError(f"Metadata file not found: {meta_file}")
+
         self.pipeline = joblib.load(model_file)
         logger.info(f"Model loaded from {model_file}")
+
         self.metadata = json.loads(meta_file.read_text())
         self.feature_columns = self.metadata.get("feature_columns", [])
         self.threshold = self.metadata.get("threshold", 0.5)
+
         logger.info(
-            f"Metadata loaded: version={self.metadata.get('version')}, "
-            f"threshold={self.threshold}, n_features={len(self.feature_columns)}"
+            "Metadata loaded: version=%s, threshold=%s, n_features=%d",
+            self.metadata.get("version"),
+            self.threshold,
+            len(self.feature_columns),
         )
+
         if settings.enable_shap:
             try:
                 model_step = self.pipeline.named_steps.get("model")
@@ -80,14 +91,16 @@ class ModelState:
                     self.explainer = shap.TreeExplainer(model_step)
                     logger.info("SHAP TreeExplainer initialized")
                 else:
-                    logger.warning("Could not find 'model' step in pipeline — SHAP disabled")
+                    logger.warning(
+                        "Could not find 'model' step in pipeline — SHAP disabled"
+                    )
             except Exception as e:
                 logger.warning(f"SHAP init failed (non-fatal): {e}")
+
         self.ready = True
 
 
 model_state = ModelState()
-
 
 FEATURE_INSIGHT_MAP = {
     "tank_level": (
@@ -123,7 +136,10 @@ FEATURE_INSIGHT_MAP = {
 DEFAULT_INSIGHT = (
     "Alert: Elevated risk detected. Monitor all pressure gauges and flow rates closely."
 )
-STABLE_INSIGHT = "System operating within normal parameters. Continue current operations."
+
+STABLE_INSIGHT = (
+    "System operating within normal parameters. Continue current operations."
+)
 
 
 def _match_insight(feature_name: str) -> str:
@@ -134,10 +150,13 @@ def _match_insight(feature_name: str) -> str:
     return DEFAULT_INSIGHT
 
 
-def build_reasoning(risk_score: float, threshold: float, top_features: List[Dict[str, Any]]):
+def build_reasoning(
+    risk_score: float, threshold: float, top_features: List[Dict[str, Any]]
+):
     is_unstable = risk_score >= threshold
     if not is_unstable:
         return {"top_drivers": top_features, "insight": STABLE_INSIGHT}
+
     primary = top_features[0]["feature"] if top_features else "unknown"
     insight = _match_insight(primary)
     return {"top_drivers": top_features, "insight": insight}
@@ -150,6 +169,7 @@ def build_agent_protocol(risk_score: float, threshold: float) -> Dict[str, str]:
             "priority": "NORMAL",
             "escalation_required": "false",
         }
+
     if risk_score >= 0.8:
         return {
             "suggested_action": "EMERGENCY_RESPONSE",
@@ -220,10 +240,17 @@ class HealthResponse(BaseModel):
     model_version: Optional[str] = None
 
 
-def construct_features(telemetry: List[TelemetryReading], feature_columns: List[str]) -> np.ndarray:
-    rows = []
+def construct_features(
+    telemetry: List[TelemetryReading], feature_columns: List[str]
+) -> np.ndarray:
+    rows: List[Dict[str, Any]] = []
+
     for reading in telemetry:
-        row: Dict[str, Any] = {"ts_ms": reading.ts_ms, "stream_type": reading.stream_type}
+        row: Dict[str, Any] = {
+            "ts_ms": reading.ts_ms,
+            "stream_type": reading.stream_type,
+        }
+
         if reading.stream_type == "pump":
             key_map = {
                 "engine_rpm": "rpm",
@@ -254,12 +281,14 @@ def construct_features(telemetry: List[TelemetryReading], feature_columns: List[
         rows.append(row)
 
     df = pd.DataFrame(rows).sort_values("ts_ms")
+
     feature_dict: Dict[str, Any] = {}
 
     numeric_cols = [
         c
         for c in df.columns
-        if c not in ("ts_ms", "stream_type") and pd.api.types.is_numeric_dtype(df[c])
+        if c not in ("ts_ms", "stream_type")
+        and pd.api.types.is_numeric_dtype(df[c])
     ]
 
     for col in numeric_cols:
@@ -267,8 +296,15 @@ def construct_features(telemetry: List[TelemetryReading], feature_columns: List[
         if series.empty:
             feature_dict[col] = np.nan
             continue
+
         feature_dict[col] = series.iloc[-1]
-        for suffix, func in [("mean", np.nanmean), ("std", np.nanstd), ("min", np.nanmin), ("max", np.nanmax)]:
+
+        for suffix, func in [
+            ("mean", np.nanmean),
+            ("std", np.nanstd),
+            ("min", np.nanmin),
+            ("max", np.nanmax),
+        ]:
             for w_label in ["10s", "30s", "60s"]:
                 key = f"{col}_{suffix}_{w_label}"
                 if key in feature_columns:
@@ -276,6 +312,7 @@ def construct_features(telemetry: List[TelemetryReading], feature_columns: List[
 
     ip = feature_dict.get("pump_intake_pressure", np.nan)
     dp = feature_dict.get("pump_discharge_pressure", np.nan)
+
     if not (np.isnan(ip) or np.isnan(dp)):
         feature_dict["pressure_differential"] = dp - ip
         feature_dict["pressure_diff_roc"] = 0.0
@@ -321,25 +358,30 @@ def explain_prediction(
                 for i in top_idx
             ]
         return []
+
     try:
         imputer = pipeline.named_steps.get("imputer")
         if imputer is not None:
             X_imp = imputer.transform(feature_vector)
         else:
             X_imp = feature_vector
+
         shap_values = explainer.shap_values(X_imp)
         if isinstance(shap_values, list):
             sv = shap_values[1][0]
         else:
             sv = shap_values[0]
+
         top_idx = np.argsort(np.abs(sv))[::-1][:top_k]
         return [
             {
                 "feature": feature_columns[i],
                 "shap_value": round(float(sv[i]), 4),
-                "feature_value": round(float(feature_vector[0, i]), 4)
-                if not np.isnan(feature_vector[0, i])
-                else None,
+                "feature_value": (
+                    round(float(feature_vector[0, i]), 4)
+                    if not np.isnan(feature_vector[0, i])
+                    else None
+                ),
                 "type": "shap",
             }
             for i in top_idx
@@ -408,17 +450,25 @@ async def readiness():
 @app.post("/predict", response_model=PredictionResponse, tags=["inference"])
 async def predict(request: PredictionRequest):
     if not model_state.ready:
-        raise HTTPException(status_code=503, detail="Model not loaded — service not ready")
+        raise HTTPException(
+            status_code=503, detail="Model not loaded — service not ready"
+        )
 
     start = time.perf_counter()
     try:
-        features = construct_features(request.telemetry, model_state.feature_columns)
+        features = construct_features(
+            request.telemetry, model_state.feature_columns
+        )
     except Exception as e:
         logger.error(f"Feature construction failed: {e}")
-        raise HTTPException(status_code=422, detail=f"Failed to construct features: {e}")
+        raise HTTPException(
+            status_code=422, detail=f"Failed to construct features: {e}"
+        )
 
     try:
-        risk_score = float(model_state.pipeline.predict_proba(features)[:, 1][0])
+        risk_score = float(
+            model_state.pipeline.predict_proba(features)[:, 1][0]
+        )
     except Exception as e:
         logger.error(f"Prediction failed: {e}")
         raise HTTPException(status_code=500, detail="Model prediction failed")
@@ -432,15 +482,20 @@ async def predict(request: PredictionRequest):
     )
 
     reasoning = build_reasoning(risk_score, model_state.threshold, top_features)
-    agent_protocol = build_agent_protocol(risk_score, model_state.threshold)
+    agent_protocol = build_agent_protocol(
+        risk_score, model_state.threshold
+    )
 
     elapsed_ms = (time.perf_counter() - start) * 1000
+
     logger.info(
-        f"Prediction: incident={request.incident_id} "
-        f"risk={risk_score:.4f} unstable={risk_score >= model_state.threshold} "
-        f"action={agent_protocol['suggested_action']} "
-        f"priority={agent_protocol['priority']} "
-        f"latency={elapsed_ms:.1f}ms"
+        "Prediction: incident=%s risk=%.4f unstable=%s action=%s priority=%s latency=%.1fms",
+        request.incident_id,
+        risk_score,
+        risk_score >= model_state.threshold,
+        agent_protocol["suggested_action"],
+        agent_protocol["priority"],
+        elapsed_ms,
     )
 
     return PredictionResponse(
@@ -473,7 +528,11 @@ def main():
     )
     parser.add_argument("--host", default="0.0.0.0", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
-    parser.add_argument("--model-dir", default="./artifacts", help="Path to model artifacts")
+    parser.add_argument(
+        "--model-dir",
+        default="./artifacts",
+        help="Path to model artifacts",
+    )
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument(
         "--workers",
@@ -481,13 +540,15 @@ def main():
         default=1,
         help="Number of Uvicorn workers (use 1 for model serving)",
     )
+
     args = parser.parse_args()
 
     os.environ["WATEROPS_MODEL_DIR"] = args.model_dir
     os.environ["WATEROPS_LOG_LEVEL"] = args.log_level
 
+    # Run using the in-module app object (no waterops.serve import string)
     uvicorn.run(
-        "waterops.serve:app",
+        app,
         host=args.host,
         port=args.port,
         workers=args.workers,
