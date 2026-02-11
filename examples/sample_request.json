@@ -1,0 +1,62 @@
+```json
+ {
+
+  "incident_id": "incident_000",
+
+  "telemetry": [
+
+    {
+
+      "ts_ms": 1700000100000,
+
+      "stream_type": "pump",
+
+      "payload": {
+
+        "intake_pressure_psi": 68.0,
+
+        "discharge_pressure_psi": 123.0,
+
+        "engine_rpm": 1450.0,
+
+        "tank_level": 480.0
+
+      }
+
+    },
+
+    {
+
+      "ts_ms": 1700000100000,
+
+      "stream_type": "nozzle",
+
+      "payload": {
+
+        "nozzle_pressure_psi": 110.0,
+
+        "flow_gpm": 150.0,
+
+        "nozzle_setting_gpm": 150.0
+
+      }
+
+    },
+
+    {
+
+      "ts_ms": 1700000100000,
+
+      "stream_type": "supply",
+
+      "payload": {
+
+        "residual_pressure_psi": 70.0
+
+      }
+
+    }
+
+  ]
+
+}
