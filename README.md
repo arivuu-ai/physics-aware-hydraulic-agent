@@ -219,11 +219,20 @@ README.md
 
 # Error Analysis
 
-Key observations to document after training:
-- **False negatives**: What patterns does the model miss? (e.g., slow-onset supply degradation)
-- **False positives**: What triggers spurious alerts? (e.g., brief sensor noise in nozzle readings)
-- **Feature importance**: Which features dominate? Is the model relying on expected physical signals?
-- **Incident-level variance**: Does performance vary significantly across incidents?
+# False negatives
+Most false negatives are concentrated in incident_005, indicating that this scenario remains challenging for the model.
+Missed events tend to occur during gradual degradation patterns (e.g., slowly declining supply or pressure signals over tens of seconds) rather than sharp collapses, so the model’s risk score sometimes remains below threshold until instability is imminent. This suggests the model is more sensitive to sudden changes than to slow-onset failure modes.​ In windows labelled as unstable but predicted as stable, tank and intake/supply pressures often remain within near-normal ranges, while only subtle trends (small negative slope, mild variance changes) distinguish them from stable periods, indicating room to strengthen features that capture long-horizon trends.
+​
+# False positives
+False positives are heavily concentrated in incident_007, with relatively few such errors in other incidents.
+These spurious alerts often align with short-lived spikes in nozzle/flow variability (e.g., elevated *_std_10s features) while pump discharge, intake, and tank levels remain stable, consistent with transient sensor noise or brief operator actions rather than true supply instability. In these windows the model’s risk score crosses the alert threshold based largely on high-frequency nozzle-side features, suggesting an opportunity to de-emphasize very short-window variance or to require corroborating evidence from pump/supply signals before escalating.
+
+# Feature importance
+Global feature importance from the trained XGBoost model shows that the top-ranked features are dominated by pressure and flow dynamics, including discharge pressure, intake pressure, tank level, and nozzle pressure, along with their short- and medium-window aggregates. This aligns with the expected physics of the problem: cavitation and supply loss primarily manifest as changes in intake/discharge pressures, hydrant residual pressure, and tank-level trajectories, rather than in unrelated telemetry.
+However, several high-importance features relate to short-window variance (e.g., 10-second standard deviations on nozzle pressure and flow), which helps explain why brief noisy bursts can occasionally trigger false positives in nozzle-heavy incidents.
+
+# Incident-level variance
+Per-incident analysis on the temporal test split shows that incident_007 has high PR-AUC (~0.87) but only moderate F1 (~0.62) and ROC-AUC (~0.53), with a very high positive rate (~79% of test rows). This pattern suggests that, while the model ranks unstable periods correctly within this incident, the extreme class imbalance and noisy boundaries between stable and unstable windows make it difficult to simultaneously optimize precision and recall at a single threshold. Other incidents exhibit far fewer misclassifications (few or no rows in the false-negative/false-positive tables), indicating that model performance is not uniform across scenarios; most incidents are handled cleanly, with the bulk of remaining errors concentrated in a small number of more pathological cases like incident_005 and incident_007.
 
 ---
 
